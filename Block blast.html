@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Block Blast REAL PRO</title>
+<style>
+body{
+  background:#0f172a;
+  color:white;
+  text-align:center;
+  font-family:sans-serif;
+  margin:0;
+}
+canvas{
+  background:#1e293b;
+  display:block;
+  margin:auto;
+  border-radius:10px;
+}
+#pieces{
+  display:flex;
+  justify-content:center;
+  margin-top:10px;
+}
+.pieceCanvas{
+  margin:8px;
+}
+</style>
+</head>
+<body>
+
+<h2>🧱 Block Blast PRO</h2>
+<p>Puntos: <span id="score">0</span></p>
+
+<canvas id="board" width="320" height="320"></canvas>
+<div id="pieces"></div>
+
+<script>
+const boardCanvas = document.getElementById("board");
+const ctx = boardCanvas.getContext("2d");
+
+let grid=10, tile=32;
+let board = Array(grid).fill().map(()=>Array(grid).fill(0));
+let score=0;
+
+let shapes=[
+ [[1]],
+ [[1,1]],
+ [[1],[1]],
+ [[1,1],[1,1]],
+ [[1,1,1]],
+ [[1],[1],[1]],
+ [[1,1,0],[0,1,1]]
+];
+
+let pieces=[];
+let dragging=null;
+
+// 🎨 color
+function randomColor(){
+  return `hsl(${Math.random()*360},80%,60%)`;
+}
+
+// generar piezas
+function newPieces(){
+  pieces=[];
+  for(let i=0;i<3;i++){
+    pieces.push({
+      shape:shapes[Math.floor(Math.random()*shapes.length)],
+      color:randomColor()
+    });
+  }
+  renderPieces();
+}
+
+// dibujar tablero
+function drawBoard(preview=null){
+  ctx.clearRect(0,0,320,320);
+
+  for(let y=0;y<grid;y++){
+    for(let x=0;x<grid;x++){
+      ctx.fillStyle=board[y][x]||"#334155";
+      ctx.fillRect(x*tile,y*tile,tile-2,tile-2);
+    }
+  }
+
+  // 👻 preview
+  if(preview){
+    ctx.globalAlpha=0.5;
+    preview.shape.forEach((row,y)=>{
+      row.forEach((cell,x)=>{
+        if(cell){
+          ctx.fillStyle=preview.color;
+          ctx.fillRect((preview.x+x)*tile,(preview.y+y)*tile,tile-2,tile-2);
+        }
+      });
+    });
+    ctx.globalAlpha=1;
+  }
+}
+
+// UI piezas
+function renderPieces(){
+  const container=document.getElementById("pieces");
+  container.innerHTML="";
+
+  pieces.forEach((p,i)=>{
+    let c=document.createElement("canvas");
+    c.width=100; c.height=100;
+    c.className="pieceCanvas";
+    let cctx=c.getContext("2d");
+
+    p.shape.forEach((row,y)=>{
+      row.forEach((cell,x)=>{
+        if(cell){
+          cctx.fillStyle=p.color;
+          cctx.fillRect(x*25,y*25,23,23);
+        }
+      });
+    });
+
+    // 🖐️ inicio drag
+    c.addEventListener("touchstart",e=>{
+      dragging={
+        ...p,
+        index:i,
+        px:e.touches[0].clientX,
+        py:e.touches[0].clientY
+      };
+    });
+
+    container.appendChild(c);
+  });
+}
+
+// 🖐️ mover dedo
+document.addEventListener("touchmove",e=>{
+  if(!dragging) return;
+
+  let rect=boardCanvas.getBoundingClientRect();
+  let x=Math.floor((e.touches[0].clientX-rect.left)/tile);
+  let y=Math.floor((e.touches[0].clientY-rect.top)/tile);
+
+  if(canPlace(dragging.shape,x,y)){
+    drawBoard({shape:dragging.shape,color:dragging.color,x,y});
+  } else {
+    drawBoard();
+  }
+});
+
+// 🖐️ soltar
+document.addEventListener("touchend",e=>{
+  if(!dragging) return;
+
+  let rect=boardCanvas.getBoundingClientRect();
+  let x=Math.floor((e.changedTouches[0].clientX-rect.left)/tile);
+  let y=Math.floor((e.changedTouches[0].clientY-rect.top)/tile);
+
+  if(canPlace(dragging.shape,x,y)){
+    place(dragging,x,y);
+    playSound(600);
+
+    pieces.splice(dragging.index,1);
+    clearLines();
+    drawBoard();
+    renderPieces();
+
+    if(pieces.length===0) newPieces();
+
+    if(!canAnyPlace()){
+      setTimeout(()=>{
+        alert("💀 Game Over | "+score);
+        resetGame();
+      },200);
+    }
+  }
+
+  dragging=null;
+});
+
+// lógica
+function canPlace(shape,px,py){
+  for(let y=0;y<shape.length;y++){
+    for(let x=0;x<shape[y].length;x++){
+      if(shape[y][x]){
+        let nx=px+x, ny=py+y;
+        if(nx>=grid||ny>=grid||board[ny][nx]) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function place(p,px,py){
+  p.shape.forEach((row,y)=>{
+    row.forEach((cell,x)=>{
+      if(cell) board[py+y][px+x]=p.color;
+    });
+  });
+}
+
+// limpiar
+function clearLines(){
+  for(let y=0;y<grid;y++){
+    if(board[y].every(c=>c)){
+      board[y].fill(0);
+      score+=10;
+      playSound(200);
+    }
+  }
+
+  for(let x=0;x<grid;x++){
+    let full=true;
+    for(let y=0;y<grid;y++) if(!board[y][x]) full=false;
+    if(full){
+      for(let y=0;y<grid;y++) board[y][x]=0;
+      score+=10;
+      playSound(200);
+    }
+  }
+
+  document.getElementById("score").innerText=score;
+}
+
+// verificar
+function canAnyPlace(){
+  for(let p of pieces){
+    for(let y=0;y<grid;y++){
+      for(let x=0;x<grid;x++){
+        if(canPlace(p.shape,x,y)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// sonido
+function playSound(freq){
+  const audio=new AudioContext();
+  const osc=audio.createOscillator();
+  osc.frequency.value=freq;
+  osc.connect(audio.destination);
+  osc.start();
+  osc.stop(audio.currentTime+0.1);
+}
+
+// reset
+function resetGame(){
+  board = Array(grid).fill().map(()=>Array(grid).fill(0));
+  score=0;
+  document.getElementById("score").innerText=score;
+  newPieces();
+  drawBoard();
+}
+
+// iniciar
+newPieces();
+drawBoard();
+</script>
+
+</body>
+</html>
